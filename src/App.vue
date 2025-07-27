@@ -4,6 +4,12 @@
       <div class="header">
         <h1>WebRTC Client</h1>
         <p>Connect to the signaling server and manage user sessions</p>
+        <div class="feature-info" v-if="isLoggedIn">
+          <small>
+            <strong>MobileApp users:</strong> Can only broadcast calls to WebApp users<br>
+            <strong>WebApp users:</strong> Can make direct calls to MobileApp users only
+          </small>
+        </div>
       </div>
       
       <div class="content">
@@ -32,7 +38,15 @@
 
         <!-- Call Status for Both Caller and Callee -->
         <div v-if="isInCall && callingUserId" class="call-status-info">
-          <strong>Calling:</strong> {{ callingUserId }}<br>
+          <strong v-if="callingUserId === 'BROADCAST' && callState !== 'connected'">Broadcasting to:</strong>
+          <strong v-else-if="callingUserId === 'BROADCAST' && callState === 'connected'">Connected to:</strong>
+          <strong v-else>Calling:</strong> 
+          <span v-if="callingUserId === 'BROADCAST' && callState !== 'connected'">All WebApp Users</span>
+          <span v-else-if="callingUserId === 'BROADCAST' && callState === 'connected'">{{ connectedUserId || 'Unknown User' }}</span>
+          <span v-else>{{ callingUserId }}</span><br>
+          <strong>Call Type:</strong> 
+          <span v-if="callingUserId === 'BROADCAST' || currentUserType === 'MobileApp'" class="status-badge broadcast">Broadcast Call</span>
+          <span v-else class="status-badge direct">Direct Call</span><br>
           <strong>Status:</strong> 
           <span v-if="callState === 'incoming'" class="status-badge incoming">Incoming Call</span>
           <span v-else-if="callState === 'connecting'" class="status-badge connecting">Connecting...</span>
@@ -98,6 +112,28 @@
             />
           </div>
           
+          <div class="form-group">
+            <label>User Type:</label>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input 
+                  type="radio" 
+                  v-model="userTypeInput" 
+                  value="WebApp"
+                />
+                Web App
+              </label>
+              <label class="radio-label">
+                <input 
+                  type="radio" 
+                  v-model="userTypeInput" 
+                  value="MobileApp"
+                />
+                Mobile App
+              </label>
+            </div>
+          </div>
+          
           <button 
             class="btn" 
             @click="goOnline"
@@ -111,6 +147,7 @@
         <div v-else>
           <div class="connection-info">
             <strong>Logged in as:</strong> {{ currentUserId }}<br>
+            <strong>User Type:</strong> {{ currentUserType }}<br>
             <strong>Metadata:</strong> {{ currentMetadata || 'None' }}
           </div>
           
@@ -135,44 +172,95 @@
 
         <!-- Online Users Section -->
         <div class="users-section" v-if="isLoggedIn">
-          <h3>Online Users ({{ onlineUsers.length }})</h3>
+          <h3>{{ getUsersSectionTitle() }}</h3>
           
-          <div v-if="onlineUsers.length === 0" class="empty-state">
-            <p>No other users online</p>
-            <p>You're the only one connected right now!</p>
+          <!-- MobileApp User Interface -->
+          <div v-if="currentUserType === 'MobileApp'">
+            <div v-if="availableWebAppUsers.length === 0" class="empty-state">
+              <p>No WebApp users available for broadcast</p>
+              <p>WebApp users need to be online to receive your broadcast calls</p>
+            </div>
+            
+            <div v-else class="broadcast-section">
+              <div class="broadcast-info">
+                <p><strong>Available WebApp Users:</strong> {{ availableWebAppUsers.length }}</p>
+                <p>Click "Broadcast Call" to send a call to all available WebApp users</p>
+              </div>
+              
+              <button 
+                class="btn btn-broadcast"
+                @click="initiateBroadcastCall()"
+                :disabled="isInCall"
+                :title="isInCall ? 'You are in a call' : 'Broadcast call to all WebApp users'"
+              >
+                📡 Broadcast Call
+              </button>
+              
+              <div class="users-list">
+                <div 
+                  v-for="user in availableWebAppUsers" 
+                  :key="user.userId"
+                  class="user-card"
+                >
+                  <h4>
+                    <span class="online-indicator"></span>
+                    {{ user.userId }}
+                  </h4>
+                  <p v-if="user.metadata">
+                    <strong>Info:</strong> {{ user.metadata }}
+                  </p>
+                  <p>
+                    <strong>Status:</strong> 
+                    <span v-if="user.inCall" class="status-badge busy">In Call</span>
+                    <span v-else class="status-badge available">Available</span>
+                  </p>
+                  <p v-if="user.lastSeen">
+                    <strong>Last Seen:</strong> {{ formatTimestamp(user.lastSeen) }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
           
-          <div v-else class="users-list">
-            <div 
-              v-for="user in onlineUsers" 
-              :key="user.userId"
-              class="user-card"
-            >
-              <h4>
-                <span class="online-indicator"></span>
-                {{ user.userId }}
-              </h4>
-              <p v-if="user.metadata">
-                <strong>Info:</strong> {{ user.metadata }}
-              </p>
-              <p>
-                <strong>Status:</strong> 
-                <span v-if="user.isInCall" class="status-badge busy">In Call</span>
-                <span v-else class="status-badge available">Available</span>
-              </p>
-              <p v-if="user.lastSeen">
-                <strong>Last Seen:</strong> {{ formatTimestamp(user.lastSeen) }}
-              </p>
-              
-              <!-- Call Button -->
-              <button 
-                class="btn btn-call"
-                @click="initiateCall(user.userId)"
-                :disabled="isInCall || user.isInCall"
-                :title="isInCall ? 'You are in a call' : user.isInCall ? 'User is busy' : 'Call user'"
+          <!-- WebApp User Interface -->
+          <div v-else-if="currentUserType === 'WebApp'">
+            <div v-if="availableMobileAppUsers.length === 0" class="empty-state">
+              <p>No MobileApp users online</p>
+              <p>MobileApp users need to be online for you to call them</p>
+            </div>
+            
+            <div v-else class="users-list">
+              <div 
+                v-for="user in availableMobileAppUsers" 
+                :key="user.userId"
+                class="user-card"
               >
-                📞 Call
-              </button>
+                <h4>
+                  <span class="online-indicator"></span>
+                  {{ user.userId }}
+                </h4>
+                <p v-if="user.metadata">
+                  <strong>Info:</strong> {{ user.metadata }}
+                </p>
+                <p>
+                  <strong>Status:</strong> 
+                  <span v-if="user.inCall" class="status-badge busy">In Call</span>
+                  <span v-else class="status-badge available">Available</span>
+                </p>
+                <p v-if="user.lastSeen">
+                  <strong>Last Seen:</strong> {{ formatTimestamp(user.lastSeen) }}
+                </p>
+                
+                <!-- Call Button for WebApp users -->
+                <button 
+                  class="btn btn-call"
+                  @click="initiateCall(user.userId)"
+                  :disabled="isInCall || user.isInCall"
+                  :title="isInCall ? 'You are in a call' : user.isInCall ? 'User is busy' : 'Call user'"
+                >
+                  📞 Call
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -199,15 +287,17 @@ export default {
   },
   data() {
     return {
-      wsUrl: 'wss://gateway.dev.api.conroo.com/ws/v1/webrtc/signaling',
+      wsUrl: 'ws://localhost:8081/ws/v1/webrtc/signaling',
       ws: null,
       connectionStatus: 'disconnected', // 'disconnected', 'connecting', 'connected'
       
       // User management
       userIdInput: '',
       metadataInput: '',
+      userTypeInput: 'WebApp',
       currentUserId: null,
       currentMetadata: null,
+      currentUserType: null,
       isLoggedIn: false,
       
       // Online users
@@ -224,6 +314,7 @@ export default {
       isInCall: false,
       callState: 'incoming', // 'incoming', 'connecting', 'connected', 'ended'
       callingUserId: null,
+      connectedUserId: null, // Track the actual user we're connected to (for broadcast calls)
       currentCallId: null,
       incomingCall: {
         callerId: '',
@@ -238,6 +329,17 @@ export default {
         microphoneId: null
       },
       pendingCallTarget: null
+    }
+  },
+  
+  computed: {
+    // Filter users based on current user type
+    availableWebAppUsers() {
+      return this.onlineUsers.filter(user => user.userType === 'WebApp' && !user.inCall)
+    },
+    
+    availableMobileAppUsers() {
+      return this.onlineUsers.filter(user => user.userType === 'MobileApp' && !user.inCall)
     }
   },
   
@@ -351,6 +453,7 @@ export default {
       
       this.currentUserId = this.userIdInput.trim()
       this.currentMetadata = this.metadataInput.trim() || null
+      this.currentUserType = this.userTypeInput
       this.isLoggedIn = true
       
       this.sendUserOnline()
@@ -364,6 +467,7 @@ export default {
       this.endCurrentCall()
       this.currentUserId = null
       this.currentMetadata = null
+      this.currentUserType = null
       this.isLoggedIn = false
       this.onlineUsers = []
       this.onlineUsersCount = 0
@@ -378,7 +482,9 @@ export default {
       const message = {
         type: 'USER_ONLINE',
         fromUserId: this.currentUserId,
-        metadata: this.currentMetadata
+        metadata: this.currentMetadata,
+        facilityId: '8',
+        userType: this.currentUserType
       }
       
       this.ws.send(JSON.stringify(message))
@@ -452,6 +558,11 @@ export default {
             this.handleCallEnded(message)
             break
             
+          case 'CALL_CANCEL':
+            console.log('Received CALL_CANCEL:', message)
+            this.handleCallCanceled(message)
+            break
+            
           default:
             console.log('Unknown message type:', message.type)
         }
@@ -494,7 +605,11 @@ export default {
         this.currentCallId = offer.callId
         this.callingUserId = toUserId
         
-        console.log('Sending offer via WebSocket:', offer)
+        // Determine message type based on user type
+        const messageType = this.currentUserType === 'MobileApp' ? 'BROADCAST_OFFER' : 'OFFER'
+        offer.type = messageType
+        
+        console.log(`Sending ${messageType} via WebSocket:`, offer)
         
         // Check if WebSocket is open before sending
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -626,6 +741,7 @@ export default {
       this.isInCall = false
       this.currentCallId = null
       this.callingUserId = null
+      this.connectedUserId = null
       this.callState = 'ended'
       this.incomingCall = {
         callerId: '',
@@ -640,6 +756,12 @@ export default {
         await this.webRTCService.handleAnswer(answer)
         this.callState = 'connected'
         this.isInCall = true
+        
+        // For broadcast calls, track the actual user who answered
+        if (this.callingUserId === 'BROADCAST') {
+          this.connectedUserId = answer.fromUserId
+          console.log('Broadcast call answered by:', this.connectedUserId)
+        }
       } catch (error) {
         console.error('Failed to handle answer:', error)
       }
@@ -667,14 +789,42 @@ export default {
       alert(`Call was rejected: ${message.reason || 'Unknown reason'}`)
     },
     
+    handleCallCanceled(message) {
+      console.log('Call was canceled:', message)
+      
+      // If we're currently in an incoming call state and this is the same call
+      if (this.isInCall && this.callState === 'incoming' && this.currentCallId === message.callId) {
+        alert(`Call was answered by another user: ${message.reason || 'Call answered by another user'}`)
+        
+        // Reset call state
+        this.isInCall = false
+        this.currentCallId = null
+        this.callingUserId = null
+        this.connectedUserId = null
+        this.callState = 'ended'
+        this.incomingCall = {
+          callerId: '',
+          callerMetadata: '',
+          callId: '',
+          sdp: ''
+        }
+      } else {
+        // Just show a notification for other cases
+        console.log('Call cancel notification:', message.reason || 'Call answered by another user')
+      }
+    },
+    
     endCurrentCall() {
-      console.log('endCurrentCall called, currentCallId:', this.currentCallId, 'callingUserId:', this.callingUserId)
+      console.log('endCurrentCall called, currentCallId:', this.currentCallId, 'callingUserId:', this.callingUserId, 'connectedUserId:', this.connectedUserId)
       
       if (this.currentCallId && this.callingUserId) {
+        // For broadcast calls, use the actual connected user ID instead of 'BROADCAST'
+        const targetUserId = (this.callingUserId === 'BROADCAST' && this.connectedUserId) ? this.connectedUserId : this.callingUserId
+        
         const endMessage = {
           type: 'CALL_END',
           fromUserId: this.currentUserId,
-          toUserId: this.callingUserId,
+          toUserId: targetUserId,
           callId: this.currentCallId
         }
         console.log('Sending CALL_END message:', endMessage)
@@ -691,6 +841,7 @@ export default {
       this.isInCall = false
       this.currentCallId = null
       this.callingUserId = null
+      this.connectedUserId = null
       this.callState = 'ended'
       this.incomingCall = {
         callerId: '',
@@ -745,6 +896,7 @@ export default {
       this.isInCall = false
       this.currentCallId = null
       this.callingUserId = null
+      this.connectedUserId = null
       this.callState = 'ended'
       this.incomingCall = {
         callerId: '',
@@ -760,6 +912,95 @@ export default {
       return user ? user.metadata : ''
     },
     
+    getCallButtonText(user) {
+      if (this.isInCall) return '📞 In Call'
+      if (user.isInCall) return '📞 Busy'
+      if (this.currentUserType === 'MobileApp' && user.userType !== 'WebApp') {
+        return '📞 Broadcast Only'
+      }
+      return '📞 Call'
+    },
+    
+    getCallButtonTitle(user) {
+      if (this.isInCall) return 'You are in a call'
+      if (user.isInCall) return 'User is busy'
+      if (this.currentUserType === 'MobileApp' && user.userType !== 'WebApp') {
+        return 'MobileApp users can only broadcast to WebApp users'
+      }
+      return 'Call user'
+    },
+    
+    getUsersSectionTitle() {
+      if (this.currentUserType === 'MobileApp') {
+        return `Available WebApp Users (${this.availableWebAppUsers.length})`
+      } else {
+        return `Available MobileApp Users (${this.availableMobileAppUsers.length})`
+      }
+    },
+    
+    async initiateBroadcastCall() {
+      if (this.isInCall) {
+        alert('You are already in a call')
+        return
+      }
+      
+      if (this.availableWebAppUsers.length === 0) {
+        alert('No WebApp users available for broadcast')
+        return
+      }
+      
+      // Show device selector if devices haven't been selected
+      if (!this.selectedDevices.cameraId || !this.selectedDevices.microphoneId) {
+        this.showDeviceSelector = true
+        // Store the broadcast flag to call after device selection
+        this.pendingCallTarget = 'BROADCAST'
+        return
+      }
+      
+      console.log('Initiating broadcast call to all WebApp users')
+      
+      try {
+        // Create a broadcast call (we'll use a special target)
+        const offer = await this.webRTCService.createOffer('BROADCAST', this.selectedDevices.cameraId, this.selectedDevices.microphoneId)
+        if (!offer) {
+          console.error('Failed to create broadcast offer')
+          alert('Failed to create broadcast offer')
+          return
+        }
+        
+        console.log('Broadcast offer created successfully:', offer)
+        
+        offer.fromUserId = this.currentUserId
+        offer.type = 'BROADCAST_OFFER'
+        this.currentCallId = offer.callId
+        this.callingUserId = 'BROADCAST'
+        
+        console.log('Sending BROADCAST_OFFER via WebSocket:', offer)
+        
+        // Check if WebSocket is open before sending
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          console.error('WebSocket not open, cannot send broadcast offer')
+          alert('Connection lost. Please reconnect and try again.')
+          return
+        }
+        
+        this.ws.send(JSON.stringify(offer))
+        
+        // Show calling state for the broadcaster
+        this.callState = 'connecting'
+        this.isInCall = true
+        
+        // Set local video stream with automatic refresh
+        this.setupLocalVideoWithAutoRefresh()
+        
+        console.log('Broadcast call initiated successfully')
+        
+      } catch (error) {
+        console.error('Failed to initiate broadcast call:', error)
+        alert('Failed to initiate broadcast call: ' + error.message)
+      }
+    },
+    
     formatTimestamp(timestamp) {
       if (!timestamp) return 'Unknown'
       
@@ -770,7 +1011,7 @@ export default {
     // Poll for online users (fallback if WebSocket doesn't send user list updates)
     async fetchOnlineUsers() {
       try {
-        const response = await fetch('https://gateway.dev.api.conroo.com/api/v1/webrtc/users/online')
+        const response = await fetch('http://localhost:8081/api/v1/webrtc/users/online')
         const data = await response.json()
         
         if (data.users) {
@@ -845,7 +1086,12 @@ export default {
       if (this.pendingCallTarget) {
         const targetUser = this.pendingCallTarget
         this.pendingCallTarget = null
-        this.initiateCall(targetUser)
+        
+        if (targetUser === 'BROADCAST') {
+          this.initiateBroadcastCall()
+        } else {
+          this.initiateCall(targetUser)
+        }
       }
     },
     
@@ -1251,6 +1497,16 @@ export default {
   color: #212529;
 }
 
+.status-badge.broadcast {
+  background: #17a2b8;
+  color: white;
+}
+
+.status-badge.direct {
+  background: #6c757d;
+  color: white;
+}
+
 .btn-accept {
   background: #28a745;
   color: white;
@@ -1271,5 +1527,73 @@ export default {
 .btn-reject:hover {
   background: #c82333;
   box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+}
+
+.btn-broadcast {
+  background: #17a2b8;
+  color: white;
+  font-size: 16px;
+  padding: 12px 24px;
+  margin: 10px 0;
+}
+
+.btn-broadcast:hover {
+  background: #138496;
+  box-shadow: 0 5px 15px rgba(23, 162, 184, 0.4);
+}
+
+.btn-broadcast:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.broadcast-section {
+  margin-top: 20px;
+}
+
+.broadcast-info {
+  background: #e3f2fd;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  border-left: 4px solid #2196F3;
+}
+
+.broadcast-info p {
+  margin: 5px 0;
+  color: #1976d2;
+}
+
+/* Radio button styles */
+.radio-group {
+  display: flex;
+  gap: 20px;
+  margin-top: 5px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.radio-label input[type="radio"] {
+  margin: 0;
+}
+
+.feature-info {
+  margin-top: 10px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 5px;
+  border-left: 3px solid #007bff;
+}
+
+.feature-info small {
+  color: #6c757d;
+  line-height: 1.4;
 }
 </style> 
