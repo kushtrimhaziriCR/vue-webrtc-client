@@ -7,41 +7,44 @@ class WebRTCService {
     this.onRemoteStream = null;
     this.onCallEnded = null;
     
-    // ICE servers configuration
-    this.iceServers = 
-      [
-        {
-          urls: "stun:stun.relay.metered.ca:80",
-        },
-        {
-          urls: "turn:europe.relay.metered.ca:80",
-          username: "1066275211949c2711b59b43",
-          credential: "AX9s72vcBk6xPL0W",
-        },
-        {
-          urls: "turn:europe.relay.metered.ca:80?transport=tcp",
-          username: "1066275211949c2711b59b43",
-          credential: "AX9s72vcBk6xPL0W",
-        },
-        {
-          urls: "turn:europe.relay.metered.ca:443",
-          username: "1066275211949c2711b59b43",
-          credential: "AX9s72vcBk6xPL0W",
-        },
-        {
-          urls: "turns:europe.relay.metered.ca:443?transport=tcp",
-          username: "1066275211949c2711b59b43",
-          credential: "AX9s72vcBk6xPL0W",
-        },
-      ]
+    // Enhanced ICE servers configuration with better prioritization
+    this.iceServers = [
+      // STUN servers for NAT traversal
+      {
+        urls: "stun:stun.relay.metered.ca:80",
+      },
+      // TURN servers for relay when direct connection fails
+      {
+        urls: "turn:europe.relay.metered.ca:80",
+        username: "1066275211949c2711b59b43",
+        credential: "AX9s72vcBk6xPL0W",
+      },
+      {
+        urls: "turn:europe.relay.metered.ca:80?transport=tcp",
+        username: "1066275211949c2711b59b43",
+        credential: "AX9s72vcBk6xPL0W",
+      },
+      {
+        urls: "turn:europe.relay.metered.ca:443",
+        username: "1066275211949c2711b59b43",
+        credential: "AX9s72vcBk6xPL0W",
+      },
+      {
+        urls: "turns:europe.relay.metered.ca:443?transport=tcp",
+        username: "1066275211949c2711b59b43",
+        credential: "AX9s72vcBk6xPL0W",
+      },
+    ];
     
-    // RTCConfiguration with additional options
+    // Enhanced RTCConfiguration for better connectivity
     this.rtcConfig = {
       iceServers: this.iceServers,
-      iceTransportPolicy: "all",
+      iceTransportPolicy: 'all', // Allow all types of candidates
       bundlePolicy: "max-bundle",
       rtcpMuxPolicy: "require",
-      iceCandidatePoolSize: 10
+      iceCandidatePoolSize: 10,
+      // Additional options for better remote connectivity
+      sdpSemantics: 'unified-plan'
     };
     
   }
@@ -140,24 +143,75 @@ class WebRTCService {
         this.peerConnection.addTrack(track, this.localStream);
       });
       
-      // Handle remote stream
+      // Handle remote stream with enhanced debugging
       this.peerConnection.ontrack = (event) => {
-        console.log('Remote track received:', event.track.kind)
-        console.log('Remote track enabled:', event.track.enabled)
-        console.log('Remote track readyState:', event.track.readyState)
-        console.log('Remote stream:', event.streams[0])
-        this.remoteStream = event.streams[0];
+        console.log('🎯 REMOTE TRACK RECEIVED:', {
+          kind: event.track.kind,
+          enabled: event.track.enabled,
+          readyState: event.track.readyState,
+          id: event.track.id,
+          muted: event.track.muted
+        });
+        
+        console.log('📹 Remote streams available:', event.streams.length);
+        event.streams.forEach((stream, index) => {
+          console.log(`Stream ${index}:`, {
+            id: stream.id,
+            active: stream.active,
+            videoTracks: stream.getVideoTracks().length,
+            audioTracks: stream.getAudioTracks().length
+          });
+        });
+        
+        // Use the first stream or create a new one
+        if (event.streams && event.streams.length > 0) {
+          this.remoteStream = event.streams[0];
+          console.log('✅ Remote stream assigned:', this.remoteStream.id);
+        } else {
+          // Create a new MediaStream if none provided
+          this.remoteStream = new MediaStream();
+          this.remoteStream.addTrack(event.track);
+          console.log('✅ Created new remote stream with track');
+        }
+        
+        // Enable the track if it's disabled
+        if (!event.track.enabled) {
+          console.log('🔧 Enabling remote track...');
+          event.track.enabled = true;
+        }
+        
+        // Notify about remote stream
         if (this.onRemoteStream) {
+          console.log('📞 Calling onRemoteStream callback');
           this.onRemoteStream(this.remoteStream);
+        } else {
+          console.warn('⚠️ No onRemoteStream callback set');
         }
       };
       
-      // Handle ICE candidates
+      // Handle ICE candidates with enhanced logging and filtering
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-          if (this.onCallStateChange) {
-            this.onCallStateChange('ice-candidate', event.candidate);
+          const candidate = event.candidate;
+          console.log('🧊 ICE candidate generated:', {
+            type: candidate.type,
+            protocol: candidate.protocol,
+            address: candidate.address,
+            port: candidate.port,
+            priority: candidate.priority,
+            isRelay: candidate.candidate.includes('relay')
+          });
+          
+          // Log TURN candidates more prominently for remote debugging
+          if (candidate.candidate.includes('relay')) {
+            console.log('🔄 TURN RELAY CANDIDATE:', candidate.candidate);
           }
+          
+          if (this.onCallStateChange) {
+            this.onCallStateChange('ice-candidate', candidate);
+          }
+        } else {
+          console.log('✅ ICE candidate gathering completed');
         }
       };
       
@@ -239,7 +293,8 @@ class WebRTCService {
         if (!success) return null;
       }
       
-      console.log('Handling incoming offer from:', offer.fromUserId)
+      console.log('📞 Handling incoming offer from:', offer.fromUserId)
+      console.log('📋 Offer SDP length:', offer.sdp?.length || 0)
       
       // Create RTCSessionDescription with proper type and SDP
       const sessionDescription = new RTCSessionDescription({
@@ -248,11 +303,11 @@ class WebRTCService {
       })
       
       await this.peerConnection.setRemoteDescription(sessionDescription);
-      console.log('Remote description set successfully')
+      console.log('✅ Remote description set successfully')
       
       const answer = await this.peerConnection.createAnswer();
       await this.peerConnection.setLocalDescription(answer);
-      console.log('Answer created successfully')
+      console.log('✅ Answer created successfully, SDP length:', answer.sdp?.length || 0)
       
       return {
         type: 'ANSWER',
@@ -262,7 +317,7 @@ class WebRTCService {
         sdp: answer.sdp
       };
     } catch (error) {
-      console.error('Failed to handle offer:', error);
+      console.error('❌ Failed to handle offer:', error);
       return null;
     }
   }
@@ -271,13 +326,17 @@ class WebRTCService {
   async handleAnswer(answer) {
     try {
       if (this.peerConnection) {
+        console.log('📞 Handling incoming answer, SDP length:', answer.sdp?.length || 0)
         await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
           type: 'answer',
           sdp: answer.sdp
         }));
+        console.log('✅ Answer remote description set successfully')
+      } else {
+        console.warn('⚠️ No peer connection available for answer')
       }
     } catch (error) {
-      console.error('Failed to handle answer:', error);
+      console.error('❌ Failed to handle answer:', error);
     }
   }
 
@@ -331,6 +390,90 @@ class WebRTCService {
     this.onCallStateChange = onCallStateChange;
     this.onRemoteStream = onRemoteStream;
     this.onCallEnded = onCallEnded;
+  }
+
+  // Configure ICE transport policy for different scenarios
+  setIceTransportPolicy(policy = 'all') {
+    if (this.rtcConfig) {
+      this.rtcConfig.iceTransportPolicy = policy;
+    }
+  }
+
+  // Force TURN usage for remote connections
+  enableRemoteMode() {
+    if (this.rtcConfig) {
+      this.rtcConfig.iceTransportPolicy = 'relay';
+      console.log('🔧 Enabled relay-only mode for remote connections');
+    }
+  }
+
+  // Enable local mode for testing
+  enableLocalMode() {
+    if (this.rtcConfig) {
+      this.rtcConfig.iceTransportPolicy = 'all';
+      console.log('🔧 Enabled all-candidates mode for local testing');
+    }
+  }
+
+  // Debug network connectivity and ICE candidates
+  async debugNetworkConnectivity() {
+    if (!this.peerConnection) {
+      console.log('No peer connection available for debugging');
+      return;
+    }
+
+    console.log('=== Network Connectivity Debug ===');
+    console.log('Connection state:', this.peerConnection.connectionState);
+    console.log('ICE connection state:', this.peerConnection.iceConnectionState);
+    console.log('ICE gathering state:', this.peerConnection.iceGatheringState);
+    
+    // Get local and remote descriptions
+    if (this.peerConnection.localDescription) {
+      console.log('Local description type:', this.peerConnection.localDescription.type);
+    }
+    if (this.peerConnection.remoteDescription) {
+      console.log('Remote description type:', this.peerConnection.remoteDescription.type);
+    }
+    
+    // Check remote stream status
+    if (this.remoteStream) {
+      console.log('Remote stream active:', this.remoteStream.active);
+      console.log('Remote stream tracks:', this.remoteStream.getTracks().length);
+      this.remoteStream.getTracks().forEach((track, index) => {
+        console.log(`Track ${index}:`, {
+          kind: track.kind,
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted
+        });
+      });
+    } else {
+      console.log('No remote stream available');
+    }
+    
+    // Check if using TURN servers
+    const stats = await this.peerConnection.getStats();
+    let turnUsage = false;
+    stats.forEach(report => {
+      if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+        if (report.localCandidateId && report.remoteCandidateId) {
+          const localCandidate = stats.get(report.localCandidateId);
+          const remoteCandidate = stats.get(report.remoteCandidateId);
+          if (localCandidate && remoteCandidate) {
+            if (localCandidate.candidateType === 'relay' || remoteCandidate.candidateType === 'relay') {
+              turnUsage = true;
+              console.log('🔄 TURN server is being used for connection');
+            }
+          }
+        }
+      }
+    });
+    
+    if (!turnUsage) {
+      console.log('⚠️ No TURN server usage detected - this may cause remote connection issues');
+    }
+    
+    console.log('=== End Debug ===');
   }
   
   // Debug method to list available cameras
