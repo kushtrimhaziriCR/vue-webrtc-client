@@ -7,18 +7,49 @@ class WebRTCService {
     this.onRemoteStream = null;
     this.onCallEnded = null;
     
-    // Google STUN servers
-    this.iceServers = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' }
-    ];
+    // ICE servers configuration
+    this.iceServers = 
+      [
+        {
+          urls: "stun:stun.relay.metered.ca:80",
+        },
+        {
+          urls: "turn:europe.relay.metered.ca:80",
+          username: "1066275211949c2711b59b43",
+          credential: "AX9s72vcBk6xPL0W",
+        },
+        {
+          urls: "turn:europe.relay.metered.ca:80?transport=tcp",
+          username: "1066275211949c2711b59b43",
+          credential: "AX9s72vcBk6xPL0W",
+        },
+        {
+          urls: "turn:europe.relay.metered.ca:443",
+          username: "1066275211949c2711b59b43",
+          credential: "AX9s72vcBk6xPL0W",
+        },
+        {
+          urls: "turns:europe.relay.metered.ca:443?transport=tcp",
+          username: "1066275211949c2711b59b43",
+          credential: "AX9s72vcBk6xPL0W",
+        },
+      ]
+    
+    // RTCConfiguration with additional options
+    this.rtcConfig = {
+      iceServers: this.iceServers,
+      iceTransportPolicy: "all",
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
+      iceCandidatePoolSize: 10
+    };
+    
   }
 
   // Initialize peer connection
   async createPeerConnection(cameraId = null, microphoneId = null) {
     try {
-      this.peerConnection = new RTCPeerConnection({ iceServers: this.iceServers });
+      this.peerConnection = new RTCPeerConnection(this.rtcConfig);
       
       // Get local audio and video stream with specific devices
       console.log('Requesting camera and microphone access...')

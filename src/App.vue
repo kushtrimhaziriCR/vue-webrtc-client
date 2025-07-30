@@ -287,7 +287,7 @@ export default {
   },
   data() {
     return {
-      wsUrl: 'ws://localhost:8081/ws/v1/webrtc/signaling',
+      wsUrl: 'wss://gateway.dev.api.conroo.com/ws/v1/webrtc/signaling',
       ws: null,
       connectionStatus: 'disconnected', // 'disconnected', 'connecting', 'connected'
       
@@ -1011,7 +1011,7 @@ export default {
     // Poll for online users (fallback if WebSocket doesn't send user list updates)
     async fetchOnlineUsers() {
       try {
-        const response = await fetch('http://localhost:8081/api/v1/webrtc/users/online')
+        const response = await fetch('https://gateway.dev.api.conroo.com/api/v1/webrtc/users/online')
         const data = await response.json()
         
         if (data.users) {
