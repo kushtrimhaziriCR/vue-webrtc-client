@@ -16,7 +16,7 @@ A simple Vue.js web application that connects to your Spring Boot WebRTC signali
 ## Prerequisites
 
 - Node.js (v14 or higher)
-- Your Spring Boot WebRTC server running on `localhost:8081`
+- Your Spring Boot WebRTC server running on production URL
 - Modern browser with WebRTC support (Chrome, Firefox, Safari, Edge)
 
 ## Installation
@@ -33,12 +33,51 @@ A simple Vue.js web application that connects to your Spring Boot WebRTC signali
 
 ## Running the Application
 
+### Development
+
 1. Start the development server:
    ```bash
    npm run dev
    ```
 
 2. Open your browser and navigate to `http://localhost:3000`
+
+### Production Build
+
+1. Build the application:
+   ```bash
+   npm run build
+   ```
+
+2. Preview the production build:
+   ```bash
+   npm run preview
+   ```
+
+## Deployment to Netlify
+
+### Automatic Deployment (Recommended)
+
+1. **Connect to GitHub**: 
+   - Go to [Netlify](https://netlify.com)
+   - Click "New site from Git"
+   - Choose GitHub and select your repository: `kushtrimhaziriCR/vue-webrtc-client`
+
+2. **Configure Build Settings**:
+   - Build command: `npm run build`
+   - Publish directory: `dist`
+   - Node version: `18`
+
+3. **Deploy**: Netlify will automatically build and deploy your site
+
+### Manual Deployment
+
+1. Build your project:
+   ```bash
+   npm run build
+   ```
+
+2. Drag and drop the `dist` folder to Netlify's deploy area
 
 ## Usage
 
@@ -53,15 +92,15 @@ A simple Vue.js web application that connects to your Spring Boot WebRTC signali
 ## Call Features
 
 - **Audio-only calls** using WebRTC peer connections
-- **Google STUN servers** for NAT traversal
+- **STUN/TURN servers** for NAT traversal
 - **Call status indicators** (Available, In Call, Busy)
 - **Simple call modal** with accept/reject/end options
 - **Automatic call cleanup** when connection is lost
 
 ## API Endpoints Used
 
-- **WebSocket**: `ws://localhost:8081/ws/v1/webrtc/signaling`
-- **REST API**: `http://localhost:8081/api/v1/webrtc/users/online`
+- **WebSocket**: `wss://gateway.dev.api.conroo.com/ws/v1/webrtc/signaling`
+- **REST API**: `https://gateway.dev.api.conroo.com/api/v1/webrtc/users/online`
 
 ## WebSocket Message Types
 
@@ -81,34 +120,24 @@ The app uses native WebRTC APIs with:
 
 - **RTCPeerConnection** for peer-to-peer connections
 - **getUserMedia** for audio stream capture
-- **Google STUN servers** for NAT traversal
+- **STUN/TURN servers** for NAT traversal
 - **SDP offer/answer exchange** through WebSocket signaling
 - **ICE candidate exchange** for connection establishment
 
 ## Configuration
 
-You can modify the server URLs in `src/App.vue`:
+The server URLs are configured in `src/App.vue`:
 
 ```javascript
-wsUrl: 'ws://localhost:8081/ws/v1/webrtc/signaling'
+wsUrl: 'wss://gateway.dev.api.conroo.com/ws/v1/webrtc/signaling'
 ```
 
 And the REST API URL in the `fetchOnlineUsers` method.
 
-## Building for Production
-
-To build the application for production:
-
-```bash
-npm run build
-```
-
-The built files will be in the `dist` directory.
-
 ## Troubleshooting
 
-1. **Connection Issues**: Make sure your Spring Boot server is running on port 8081
-2. **CORS Issues**: Ensure your Spring Boot server has CORS configured to allow requests from `http://localhost:3000`
+1. **Connection Issues**: Make sure your Spring Boot server is running and accessible
+2. **CORS Issues**: Ensure your Spring Boot server has CORS configured to allow requests from your Netlify domain
 3. **WebSocket Issues**: Check that the WebSocket endpoint is correctly configured in your Spring Boot application
 4. **Audio Issues**: Make sure your browser has permission to access the microphone
 5. **Call Issues**: Check browser console for WebRTC-related errors
@@ -126,4 +155,8 @@ This version includes basic audio calling functionality. Future enhancements cou
 - Group calls
 - Call recording
 - Advanced call controls (mute, hold, transfer)
-- Better error handling and user feedback 
+- Better error handling and user feedback
+
+## About
+
+No description, website, or topics provided. 
