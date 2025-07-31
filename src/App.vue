@@ -889,6 +889,12 @@ export default {
       
       // Set the remote video stream with automatic refresh
       this.setupRemoteVideoWithAutoRefresh(stream)
+      
+      // Also ensure the call state is updated to connected
+      if (this.callState !== 'connected') {
+        console.log('Updating call state to connected due to remote stream')
+        this.callState = 'connected'
+      }
     },
     
     handleCallEnded() {
@@ -1247,6 +1253,30 @@ export default {
       }
     },
     
+    // Force refresh remote video when call connects
+    forceRefreshRemoteVideo() {
+      console.log('🔄 Force refreshing remote video...')
+      if (this.$refs.remoteVideo) {
+        const remoteStream = this.webRTCService.getRemoteStream()
+        if (remoteStream) {
+          console.log('Found remote stream, refreshing video element')
+          // Temporarily clear and re-set the stream
+          this.$refs.remoteVideo.srcObject = null
+          setTimeout(() => {
+            this.$refs.remoteVideo.srcObject = remoteStream
+            this.$refs.remoteVideo.muted = false
+            this.$refs.remoteVideo.play().catch(e => {
+              console.log('Remote video play error after refresh:', e)
+            })
+          }, 100)
+        } else {
+          console.log('No remote stream available for refresh')
+        }
+      } else {
+        console.log('Remote video element not found for refresh')
+      }
+    },
+    
     // New method to set up local video with automatic refresh
     setupLocalVideoWithAutoRefresh() {
       this.$nextTick(() => {
@@ -1286,6 +1316,11 @@ export default {
     setupRemoteVideoWithAutoRefresh(stream) {
       if (this.$refs.remoteVideo) {
         console.log('Setting remote video stream with auto refresh')
+        console.log('Remote stream tracks:', stream.getTracks())
+        console.log('Remote stream active:', stream.active)
+        
+        // Ensure the video element is not muted for remote audio
+        this.$refs.remoteVideo.muted = false
         this.$refs.remoteVideo.srcObject = stream
         
         // Force play the video
@@ -1296,6 +1331,7 @@ export default {
         // Add event listeners to debug remote video loading
         this.$refs.remoteVideo.onloadedmetadata = () => {
           console.log('Remote video metadata loaded with auto refresh')
+          console.log('Remote video dimensions:', this.$refs.remoteVideo.videoWidth, 'x', this.$refs.remoteVideo.videoHeight)
         }
         this.$refs.remoteVideo.oncanplay = () => {
           console.log('Remote video can play with auto refresh')
@@ -1305,6 +1341,30 @@ export default {
         this.$refs.remoteVideo.onerror = (error) => {
           console.error('Remote video error with auto refresh:', error)
         }
+        
+        // Log audio track information
+        const audioTracks = stream.getAudioTracks()
+        const videoTracks = stream.getVideoTracks()
+        console.log('Remote audio tracks:', audioTracks.length)
+        console.log('Remote video tracks:', videoTracks.length)
+        
+        audioTracks.forEach((track, index) => {
+          console.log(`Audio track ${index}:`, {
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState,
+            id: track.id
+          })
+        })
+        
+        videoTracks.forEach((track, index) => {
+          console.log(`Video track ${index}:`, {
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState,
+            id: track.id
+          })
+        })
       } else {
         console.error('Remote video element not found for auto refresh')
       }
@@ -1343,10 +1403,14 @@ export default {
             this.setupRemoteVideoWithAutoRefresh(remoteStream)
           }
           
+          // Force refresh remote video specifically
+          this.forceRefreshRemoteVideo()
+          
           // Retry video refresh after a short delay to ensure everything is ready
           setTimeout(() => {
             console.log('🔄 Retrying video refresh after connection...')
             this.forceRefreshVideoElements()
+            this.forceRefreshRemoteVideo()
           }, 1000)
         })
       } else if (newState === 'connecting') {
