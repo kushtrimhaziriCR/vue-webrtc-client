@@ -15,6 +15,9 @@ export default defineConfig({
     // Asset optimization
     assetsInlineLimit: 4096,
     
+    // Use default minifier (esbuild) instead of Terser
+    minify: 'esbuild',
+    
     // Rollup options for better bundling
     rollupOptions: {
       output: {
@@ -34,15 +37,6 @@ export default defineConfig({
         },
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js'
-      }
-    },
-    
-    // Minification
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true
       }
     }
   },
