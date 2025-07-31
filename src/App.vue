@@ -328,7 +328,8 @@ export default {
         cameraId: null,
         microphoneId: null
       },
-      pendingCallTarget: null
+      pendingCallTarget: null,
+      videoRefreshTimeout: null
     }
   },
   
@@ -1257,132 +1258,218 @@ export default {
       }, 5000)
     },
     
-    // Force refresh video elements
+    // Fixed forceRefreshVideoElements method
     forceRefreshVideoElements() {
-      console.log('🔄 Force refreshing video elements...')
+      console.log('🔄 Force refreshing video elements...');
       
-      const localStream = this.webRTCService.getLocalStream()
-      const remoteStream = this.webRTCService.getRemoteStream()
+      const localStream = this.webRTCService.getLocalStream();
+      const remoteStream = this.webRTCService.getRemoteStream();
       
       // Refresh local video
       if (this.$refs.localVideo && localStream) {
-        console.log('Refreshing local video element')
-        this.$refs.localVideo.srcObject = null
-        setTimeout(() => {
-          this.$refs.localVideo.srcObject = localStream
-          this.$refs.localVideo.play().catch(e => console.log('Local video play error:', e))
-        }, 100)
+        console.log('Refreshing local video element');
+        const currentLocalStream = this.$refs.localVideo.srcObject;
+        
+        if (currentLocalStream !== localStream) {
+          this.$refs.localVideo.pause();
+          this.$refs.localVideo.srcObject = null;
+          
+          setTimeout(() => {
+            if (this.$refs.localVideo && localStream.active) {
+              this.$refs.localVideo.srcObject = localStream;
+              this.$refs.localVideo.onloadeddata = () => {
+                this.$refs.localVideo.play().catch(e => {
+                  console.log('Local video play handled:', e.name);
+                });
+                this.$refs.localVideo.onloadeddata = null;
+              };
+            }
+          }, 100);
+        }
       } else {
-        console.log('Local video element or stream not available for refresh')
+        console.log('Local video element or stream not available for refresh');
       }
       
       // Refresh remote video
       if (this.$refs.remoteVideo && remoteStream) {
-        console.log('Refreshing remote video element')
-        this.$refs.remoteVideo.srcObject = null
-        setTimeout(() => {
-          this.$refs.remoteVideo.srcObject = remoteStream
-          this.$refs.remoteVideo.play().catch(e => console.log('Remote video play error:', e))
-        }, 100)
+        console.log('Refreshing remote video element');
+        const currentRemoteStream = this.$refs.remoteVideo.srcObject;
+        
+        if (currentRemoteStream !== remoteStream) {
+          this.$refs.remoteVideo.pause();
+          this.$refs.remoteVideo.srcObject = null;
+          
+          setTimeout(() => {
+            if (this.$refs.remoteVideo && remoteStream.active) {
+              this.$refs.remoteVideo.srcObject = remoteStream;
+              this.$refs.remoteVideo.muted = false;
+              this.$refs.remoteVideo.onloadeddata = () => {
+                this.$refs.remoteVideo.play().catch(e => {
+                  console.log('Remote video play handled:', e.name);
+                });
+                this.$refs.remoteVideo.onloadeddata = null;
+              };
+            }
+          }, 200);
+        }
       } else {
-        console.log('Remote video element or stream not available for refresh')
+        console.log('Remote video element or stream not available for refresh');
       }
       
-      // Log stream information for debugging
+      // Log stream information for debugging (unchanged)
       if (localStream) {
         console.log('Local stream info:', {
           active: localStream.active,
           tracks: localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState }))
-        })
+        });
       }
       
       if (remoteStream) {
         console.log('Remote stream info:', {
           active: remoteStream.active,
           tracks: remoteStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState }))
-        })
+        });
       }
     },
     
-    // Force refresh remote video when call connects
+    // Fixed forceRefreshRemoteVideo method
     forceRefreshRemoteVideo() {
-      console.log('🔄 Force refreshing remote video...')
+      console.log('🔄 Force refreshing remote video...');
       if (this.$refs.remoteVideo) {
-        const remoteStream = this.webRTCService.getRemoteStream()
+        const remoteStream = this.webRTCService.getRemoteStream();
         if (remoteStream) {
-          console.log('Found remote stream, refreshing video element')
-          // Temporarily clear and re-set the stream
-          this.$refs.remoteVideo.srcObject = null
-          setTimeout(() => {
-            this.$refs.remoteVideo.srcObject = remoteStream
-            this.$refs.remoteVideo.muted = false
-            this.$refs.remoteVideo.play().catch(e => {
-              console.log('Remote video play error after refresh:', e)
-            })
-          }, 100)
+          console.log('Found remote stream, refreshing video element');
+          
+          // Store current stream reference
+          const currentStream = this.$refs.remoteVideo.srcObject;
+          
+          // Only refresh if it's actually a different stream or if current stream is null
+          if (currentStream !== remoteStream) {
+            // Pause current video first to avoid conflicts
+            this.$refs.remoteVideo.pause();
+            
+            // Clear the source
+            this.$refs.remoteVideo.srcObject = null;
+            
+            // Wait a moment before setting new stream
+            setTimeout(() => {
+              if (this.$refs.remoteVideo && remoteStream.active) {
+                this.$refs.remoteVideo.srcObject = remoteStream;
+                this.$refs.remoteVideo.muted = false;
+                
+                // Only play after the video is ready
+                this.$refs.remoteVideo.onloadeddata = () => {
+                  this.$refs.remoteVideo.play().catch(e => {
+                    console.log('Remote video play handled:', e.name);
+                  });
+                  this.$refs.remoteVideo.onloadeddata = null; // Remove listener
+                };
+              }
+            }, 200);
+          } else {
+            console.log('Remote video already has correct stream');
+            // Just ensure it's playing if it's the same stream
+            if (this.$refs.remoteVideo.paused) {
+              this.$refs.remoteVideo.play().catch(e => {
+                console.log('Remote video play handled:', e.name);
+              });
+            }
+          }
         } else {
-          console.log('No remote stream available for refresh')
+          console.log('No remote stream available for refresh');
         }
       } else {
-        console.log('Remote video element not found for refresh')
+        console.log('Remote video element not found for refresh');
       }
     },
     
-    // New method to set up local video with automatic refresh
+    // Fixed setupLocalVideoWithAutoRefresh method
     setupLocalVideoWithAutoRefresh() {
-      this.$nextTick(async () => {
-        const localStream = this.webRTCService.getLocalStream();
-        if (this.$refs.localVideo && localStream) {
-          const success = await this.webRTCService.setVideoStream(
-            this.$refs.localVideo,
-            localStream,
-            'Local'
-          );
-          
-          if (!success) {
-            console.warn('Local video setup failed, trying basic approach');
+      this.$nextTick(() => {
+        if (this.$refs.localVideo) {
+          const localStream = this.webRTCService.getLocalStream();
+          if (localStream) {
+            console.log('Setting local video stream with auto refresh');
+            
+            // Pause any existing video first
+            this.$refs.localVideo.pause();
             this.$refs.localVideo.srcObject = localStream;
-            this.$refs.localVideo.play().catch(console.log);
+            
+            // Use loadeddata event for reliable playback
+            const handleLoadedData = () => {
+              console.log('Local video data loaded, attempting play');
+              this.$refs.localVideo.play().catch(e => {
+                console.log('Local video play handled:', e.name);
+              });
+            };
+            
+            this.$refs.localVideo.addEventListener('loadeddata', handleLoadedData, { once: true });
+            
+            // Add event listeners for debugging
+            this.$refs.localVideo.onloadedmetadata = () => {
+              console.log('Local video metadata loaded with auto refresh');
+            };
+            
+            this.$refs.localVideo.oncanplay = () => {
+              console.log('Local video can play with auto refresh');
+            };
+            
+            this.$refs.localVideo.onerror = (error) => {
+              console.error('Local video error with auto refresh:', error);
+            };
+          } else {
+            console.error('No local stream available for auto refresh');
           }
+        } else {
+          console.error('Local video element not found for auto refresh');
         }
       });
     },
     
-    // New method to set up remote video with automatic refresh
+    // Fixed setupRemoteVideoWithAutoRefresh method
     setupRemoteVideoWithAutoRefresh(stream) {
       if (this.$refs.remoteVideo) {
-        console.log('Setting remote video stream with auto refresh')
-        console.log('Remote stream tracks:', stream.getTracks())
-        console.log('Remote stream active:', stream.active)
+        console.log('Setting remote video stream with auto refresh');
+        console.log('Remote stream tracks:', stream.getTracks());
+        console.log('Remote stream active:', stream.active);
+        
+        // Pause any existing video first
+        this.$refs.remoteVideo.pause();
         
         // Ensure the video element is not muted for remote audio
-        this.$refs.remoteVideo.muted = false
-        this.$refs.remoteVideo.srcObject = stream
+        this.$refs.remoteVideo.muted = false;
+        this.$refs.remoteVideo.srcObject = stream;
         
-        // Force play the video
-        this.$refs.remoteVideo.play().catch(e => {
-          console.log('Remote video play error:', e)
-        })
+        // Use loadeddata event instead of multiple play attempts
+        const handleLoadedData = () => {
+          console.log('Remote video data loaded, attempting play');
+          this.$refs.remoteVideo.play().catch(e => {
+            console.log('Remote video play handled:', e.name);
+            // Don't retry immediately, let the browser handle it
+          });
+        };
         
-        // Add event listeners to debug remote video loading
+        // Add event listeners with proper cleanup
+        this.$refs.remoteVideo.addEventListener('loadeddata', handleLoadedData, { once: true });
+        
         this.$refs.remoteVideo.onloadedmetadata = () => {
-          console.log('Remote video metadata loaded with auto refresh')
-          console.log('Remote video dimensions:', this.$refs.remoteVideo.videoWidth, 'x', this.$refs.remoteVideo.videoHeight)
-        }
-        this.$refs.remoteVideo.oncanplay = () => {
-          console.log('Remote video can play with auto refresh')
-          // Force play again when ready
-          this.$refs.remoteVideo.play().catch(e => console.log('Remote video play error:', e))
-        }
-        this.$refs.remoteVideo.onerror = (error) => {
-          console.error('Remote video error with auto refresh:', error)
-        }
+          console.log('Remote video metadata loaded with auto refresh');
+          console.log('Remote video dimensions:', this.$refs.remoteVideo.videoWidth, 'x', this.$refs.remoteVideo.videoHeight);
+        };
         
-        // Log audio track information
-        const audioTracks = stream.getAudioTracks()
-        const videoTracks = stream.getVideoTracks()
-        console.log('Remote audio tracks:', audioTracks.length)
-        console.log('Remote video tracks:', videoTracks.length)
+        this.$refs.remoteVideo.oncanplay = () => {
+          console.log('Remote video can play with auto refresh');
+        };
+        
+        this.$refs.remoteVideo.onerror = (error) => {
+          console.error('Remote video error with auto refresh:', error);
+        };
+        
+        // Log track information (unchanged)
+        const audioTracks = stream.getAudioTracks();
+        const videoTracks = stream.getVideoTracks();
+        console.log('Remote audio tracks:', audioTracks.length);
+        console.log('Remote video tracks:', videoTracks.length);
         
         audioTracks.forEach((track, index) => {
           console.log(`Audio track ${index}:`, {
@@ -1390,8 +1477,8 @@ export default {
             muted: track.muted,
             readyState: track.readyState,
             id: track.id
-          })
-        })
+          });
+        });
         
         videoTracks.forEach((track, index) => {
           console.log(`Video track ${index}:`, {
@@ -1399,11 +1486,25 @@ export default {
             muted: track.muted,
             readyState: track.readyState,
             id: track.id
-          })
-        })
+          });
+        });
       } else {
-        console.error('Remote video element not found for auto refresh')
+        console.error('Remote video element not found for auto refresh');
       }
+    },
+    
+    // BONUS: Add this helper method to prevent multiple refresh calls
+    debounceVideoRefresh() {
+      // Clear any existing timeout
+      if (this.videoRefreshTimeout) {
+        clearTimeout(this.videoRefreshTimeout);
+      }
+      
+      // Set a new timeout
+      this.videoRefreshTimeout = setTimeout(() => {
+        this.forceRefreshVideoElements();
+        this.videoRefreshTimeout = null;
+      }, 500);
     }
   },
   
@@ -1430,8 +1531,8 @@ export default {
       if (newState === 'connected') {
         console.log('🔄 Call connected - automatically refreshing video elements')
         this.$nextTick(() => {
-          // Force refresh both local and remote video
-          this.forceRefreshVideoElements()
+          // Use debounced refresh to prevent multiple calls
+          this.debounceVideoRefresh()
           
           // Also set up remote video if we have a stream
           const remoteStream = this.webRTCService.getRemoteStream()
@@ -1445,7 +1546,7 @@ export default {
           // Retry video refresh after a short delay to ensure everything is ready
           setTimeout(() => {
             console.log('🔄 Retrying video refresh after connection...')
-            this.forceRefreshVideoElements()
+            this.debounceVideoRefresh()
             this.forceRefreshRemoteVideo()
           }, 1000)
         })
