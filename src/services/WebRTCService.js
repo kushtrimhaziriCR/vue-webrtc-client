@@ -7,6 +7,10 @@ class WebRTCService {
     this.onRemoteStream = null;
     this.onCallEnded = null;
     
+    // ICE candidate queuing
+    this.iceCandidateQueue = [];
+    this.isRemoteDescriptionSet = false;
+    
     // Enhanced ICE servers configuration with better prioritization
     this.iceServers = [
       // STUN servers for NAT traversal
@@ -361,14 +365,17 @@ class WebRTCService {
       console.log('📞 Handling incoming offer from:', offer.fromUserId)
       console.log('📋 Offer SDP length:', offer.sdp?.length || 0)
       
-      // Create RTCSessionDescription with proper type and SDP
       const sessionDescription = new RTCSessionDescription({
         type: 'offer',
         sdp: offer.sdp
       })
       
       await this.peerConnection.setRemoteDescription(sessionDescription);
-      console.log('✅ Remote description set successfully')
+      console.log('✅ Remote description set successfully');
+      
+      // Mark remote description as set and process queued ICE candidates
+      this.isRemoteDescriptionSet = true;
+      await this.processQueuedIceCandidates();
       
       const answer = await this.peerConnection.createAnswer();
       await this.peerConnection.setLocalDescription(answer);
@@ -396,7 +403,12 @@ class WebRTCService {
           type: 'answer',
           sdp: answer.sdp
         }));
-        console.log('✅ Answer remote description set successfully')
+        console.log('✅ Answer remote description set successfully');
+        
+        // Mark remote description as set and process queued ICE candidates
+        this.isRemoteDescriptionSet = true;
+        await this.processQueuedIceCandidates();
+        
       } else {
         console.warn('⚠️ No peer connection available for answer')
       }
@@ -409,7 +421,15 @@ class WebRTCService {
   async handleIceCandidate(candidate) {
     try {
       if (this.peerConnection) {
+        // Queue ICE candidates if remote description is not set yet
+        if (!this.isRemoteDescriptionSet) {
+          console.log('🧊 Queuing ICE candidate (remote description not ready)');
+          this.iceCandidateQueue.push(candidate);
+          return;
+        }
+        
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        console.log('✅ ICE candidate added successfully');
       }
     } catch (error) {
       console.error('Failed to handle ICE candidate:', error);
@@ -430,6 +450,10 @@ class WebRTCService {
     
     this.remoteStream = null;
     
+    // Reset ICE candidate state
+    this.iceCandidateQueue = [];
+    this.isRemoteDescriptionSet = false;
+    
     if (this.onCallEnded) {
       this.onCallEnded();
     }
@@ -440,6 +464,73 @@ class WebRTCService {
     return 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
   }
 
+  // Better stream assignment with retries
+  async setVideoStream(videoElement, stream, streamType = 'unknown') {
+    if (!videoElement || !stream) {
+      console.warn(`Cannot set ${streamType} stream: missing element or stream`);
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      const trySetStream = () => {
+        attempts++;
+        console.log(`Setting ${streamType} stream (attempt ${attempts})`);
+        
+        // Clear existing stream
+        videoElement.srcObject = null;
+        
+        // Set new stream
+        videoElement.srcObject = stream;
+        
+        // Add one-time event listeners
+        const onLoadedMetadata = () => {
+          console.log(`✅ ${streamType} stream metadata loaded`);
+          cleanup();
+          resolve(true);
+        };
+        
+        const onError = (error) => {
+          console.warn(`❌ ${streamType} stream error:`, error);
+          cleanup();
+          
+          if (attempts < maxAttempts) {
+            console.log(`Retrying ${streamType} stream in 500ms...`);
+            setTimeout(trySetStream, 500);
+          } else {
+            console.error(`Failed to set ${streamType} stream after ${maxAttempts} attempts`);
+            resolve(false);
+          }
+        };
+        
+        const cleanup = () => {
+          videoElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+          videoElement.removeEventListener('error', onError);
+        };
+        
+        videoElement.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+        videoElement.addEventListener('error', onError, { once: true });
+        
+        // Force play
+        videoElement.play().catch(e => {
+          console.log(`${streamType} video play error (expected):`, e.message);
+        });
+        
+        // Timeout fallback
+        setTimeout(() => {
+          if (videoElement.srcObject === stream && videoElement.readyState >= 1) {
+            cleanup();
+            resolve(true);
+          }
+        }, 2000);
+      };
+      
+      trySetStream();
+    });
+  }
+
   // Get local stream
   getLocalStream() {
     return this.localStream;
@@ -448,6 +539,22 @@ class WebRTCService {
   // Get remote stream
   getRemoteStream() {
     return this.remoteStream;
+  }
+
+  // Process queued ICE candidates
+  async processQueuedIceCandidates() {
+    console.log(`Processing ${this.iceCandidateQueue.length} queued ICE candidates`);
+    
+    for (const candidate of this.iceCandidateQueue) {
+      try {
+        await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        console.log('✅ Processed queued ICE candidate');
+      } catch (error) {
+        console.warn('Failed to process queued ICE candidate:', error);
+      }
+    }
+    
+    this.iceCandidateQueue = [];
   }
 
   // Set callbacks

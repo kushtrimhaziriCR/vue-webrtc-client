@@ -624,6 +624,15 @@ export default {
         this.callState = 'connecting'
         this.isInCall = true
         
+        // Add connection timeout
+        this.connectionTimeout = setTimeout(() => {
+          if (this.callState === 'connecting') {
+            console.warn('Connection timeout - ending call');
+            alert('Connection timeout. Please try again.');
+            this.endCurrentCall();
+          }
+        }, 30000); // 30 second timeout
+        
         // Set local video stream with automatic refresh
         this.setupLocalVideoWithAutoRefresh()
         
@@ -757,6 +766,12 @@ export default {
         this.callState = 'connected'
         this.isInCall = true
         
+        // Clear connection timeout
+        if (this.connectionTimeout) {
+          clearTimeout(this.connectionTimeout);
+          this.connectionTimeout = null;
+        }
+        
         // For broadcast calls, track the actual user who answered
         if (this.callingUserId === 'BROADCAST') {
           this.connectedUserId = answer.fromUserId
@@ -837,6 +852,12 @@ export default {
         }
       }
       
+      // Clear connection timeout
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = null;
+      }
+      
       this.webRTCService.endCall()
       this.isInCall = false
       this.currentCallId = null
@@ -883,18 +904,48 @@ export default {
     },
     
     handleRemoteStream(stream) {
-      console.log('Remote stream received:', stream)
-      console.log('Remote video tracks:', stream.getVideoTracks())
-      console.log('Remote audio tracks:', stream.getAudioTracks())
+      console.log('Remote stream received:', stream);
+      console.log('Remote video tracks:', stream.getVideoTracks());
+      console.log('Remote audio tracks:', stream.getAudioTracks());
       
-      // Set the remote video stream with automatic refresh
-      this.setupRemoteVideoWithAutoRefresh(stream)
+      // Store the stream reference
+      this.remoteStreamRef = stream;
       
-      // Also ensure the call state is updated to connected
-      if (this.callState !== 'connected') {
-        console.log('Updating call state to connected due to remote stream')
-        this.callState = 'connected'
-      }
+      // Wait for next tick to ensure DOM is ready
+      this.$nextTick(async () => {
+        if (this.$refs.remoteVideo) {
+          const success = await this.webRTCService.setVideoStream(
+            this.$refs.remoteVideo, 
+            stream, 
+            'Remote'
+          );
+          
+          if (success) {
+            console.log('✅ Remote video setup successful');
+            // Ensure call state is connected
+            if (this.callState !== 'connected') {
+              this.callState = 'connected';
+            }
+          } else {
+            console.error('❌ Remote video setup failed');
+            // Try alternative setup after delay
+            setTimeout(() => {
+              if (this.$refs.remoteVideo && stream.active) {
+                this.$refs.remoteVideo.srcObject = stream;
+                this.$refs.remoteVideo.play().catch(console.log);
+              }
+            }, 1000);
+          }
+        } else {
+          console.warn('Remote video element not available, will retry...');
+          // Retry after a short delay
+          setTimeout(() => {
+            if (this.$refs.remoteVideo && stream.active) {
+              this.handleRemoteStream(stream);
+            }
+          }, 500);
+        }
+      });
     },
     
     handleCallEnded() {
@@ -1279,37 +1330,22 @@ export default {
     
     // New method to set up local video with automatic refresh
     setupLocalVideoWithAutoRefresh() {
-      this.$nextTick(() => {
-        if (this.$refs.localVideo) {
-          const localStream = this.webRTCService.getLocalStream()
-          if (localStream) {
-            console.log('Setting local video stream with auto refresh')
-            this.$refs.localVideo.srcObject = localStream
-            
-            // Force play the video
-            this.$refs.localVideo.play().catch(e => {
-              console.log('Local video play error:', e)
-            })
-            
-            // Add event listeners to debug video loading
-            this.$refs.localVideo.onloadedmetadata = () => {
-              console.log('Local video metadata loaded with auto refresh')
-            }
-            this.$refs.localVideo.oncanplay = () => {
-              console.log('Local video can play with auto refresh')
-              // Force play again when ready
-              this.$refs.localVideo.play().catch(e => console.log('Local video play error:', e))
-            }
-            this.$refs.localVideo.onerror = (error) => {
-              console.error('Local video error with auto refresh:', error)
-            }
-          } else {
-            console.error('No local stream available for auto refresh')
+      this.$nextTick(async () => {
+        const localStream = this.webRTCService.getLocalStream();
+        if (this.$refs.localVideo && localStream) {
+          const success = await this.webRTCService.setVideoStream(
+            this.$refs.localVideo,
+            localStream,
+            'Local'
+          );
+          
+          if (!success) {
+            console.warn('Local video setup failed, trying basic approach');
+            this.$refs.localVideo.srcObject = localStream;
+            this.$refs.localVideo.play().catch(console.log);
           }
-        } else {
-          console.error('Local video element not found for auto refresh')
         }
-      })
+      });
     },
     
     // New method to set up remote video with automatic refresh
