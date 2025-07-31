@@ -121,8 +121,22 @@ export default {
       try {
         console.log('Loading available devices...')
         
-        // Request permissions first
-        await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        // Request permissions first with better error handling
+        try {
+          await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        } catch (permError) {
+          console.error('Permission error:', permError)
+          if (permError.name === 'NotAllowedError') {
+            alert('Camera/microphone permission denied. Please allow access in your browser settings and refresh the page.')
+          } else if (permError.name === 'NotFoundError') {
+            alert('No camera or microphone found on this device.')
+          } else if (permError.name === 'NotReadableError') {
+            alert('Camera or microphone is being used by another application. Please close other apps using camera/microphone.')
+          } else {
+            alert(`Failed to access camera/microphone: ${permError.message}`)
+          }
+          return
+        }
         
         const devices = await navigator.mediaDevices.enumerateDevices()
         
@@ -142,7 +156,7 @@ export default {
         
       } catch (error) {
         console.error('Failed to load devices:', error)
-        alert('Failed to access camera/microphone. Please check permissions.')
+        alert('Failed to access camera/microphone. Please check permissions and try refreshing the page.')
       }
     },
     

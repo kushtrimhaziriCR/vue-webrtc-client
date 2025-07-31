@@ -54,8 +54,19 @@ class WebRTCService {
     try {
       this.peerConnection = new RTCPeerConnection(this.rtcConfig);
       
+      // Check permissions first
+      console.log('🔍 Checking media permissions...')
+      try {
+        const cameraPermission = await navigator.permissions.query({ name: 'camera' });
+        const microphonePermission = await navigator.permissions.query({ name: 'microphone' });
+        console.log('Camera permission state:', cameraPermission.state);
+        console.log('Microphone permission state:', microphonePermission.state);
+      } catch (permError) {
+        console.warn('Could not check permissions:', permError);
+      }
+      
       // Get local audio and video stream with specific devices
-      console.log('Requesting camera and microphone access...')
+      console.log('📹 Requesting camera and microphone access...')
       console.log('Selected camera:', cameraId)
       console.log('Selected microphone:', microphoneId)
       
@@ -79,6 +90,8 @@ class WebRTCService {
         console.log('✅ Media stream obtained with specific devices')
       } catch (videoError) {
         console.warn('❌ Failed with specific device constraints:', videoError)
+        console.warn('Error name:', videoError.name)
+        console.warn('Error message:', videoError.message)
         console.warn('Trying basic video constraints...')
         
         // Try with basic video constraints
@@ -90,13 +103,34 @@ class WebRTCService {
           console.log('✅ Media stream obtained with basic constraints')
         } catch (basicError) {
           console.warn('❌ Failed with basic video, trying audio only:', basicError)
+          console.warn('Basic error name:', basicError.name)
+          console.warn('Basic error message:', basicError.message)
           
           // Last resort: audio only
-          this.localStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: false
-          });
-          console.log('✅ Media stream obtained (audio only)')
+          try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: false
+            });
+            console.log('✅ Media stream obtained (audio only)')
+          } catch (audioError) {
+            console.error('❌ Failed to get any media stream:', audioError)
+            console.error('Audio error name:', audioError.name)
+            console.error('Audio error message:', audioError.message)
+            
+            // Provide specific error messages for common issues
+            if (audioError.name === 'NotAllowedError') {
+              throw new Error('Camera/microphone permission denied. Please allow access in your browser settings.');
+            } else if (audioError.name === 'NotFoundError') {
+              throw new Error('No camera or microphone found on this device.');
+            } else if (audioError.name === 'NotReadableError') {
+              throw new Error('Camera or microphone is being used by another application.');
+            } else if (audioError.name === 'OverconstrainedError') {
+              throw new Error('Selected camera/microphone is not available. Please try different devices.');
+            } else {
+              throw new Error(`Failed to access camera/microphone: ${audioError.message}`);
+            }
+          }
         }
       }
       
