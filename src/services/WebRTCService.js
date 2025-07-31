@@ -10,8 +10,39 @@ class WebRTCService {
     // Enhanced ICE servers configuration with better prioritization
     this.iceServers = [
       // STUN servers for NAT traversal
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun.l.google.com:5349" },
+      { urls: "stun:stun1.l.google.com:3478" },
+      { urls: "stun:stun1.l.google.com:5349" },
+      { urls: "stun:stun2.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:5349" },
+      { urls: "stun:stun3.l.google.com:3478" },
+      { urls: "stun:stun3.l.google.com:5349" },
+      { urls: "stun:stun4.l.google.com:19302" },
+      { urls: "stun:stun4.l.google.com:5349" },
       {
         urls: "stun:stun.relay.metered.ca:80",
+      },
+      {
+        urls: "turn:66.29.135.127:3478",
+        username: "testuser",
+        credential: "testpassword",
+      },
+      
+           {
+        urls: "turn:relay1.expressturn.com:3480",
+        username: "000000002069315588",
+        credential: "qZqyvpRA+tLuhdux2UlT2jWEaKg=",
+      },
+      {
+        urls: "turn:relay1.expressturn.com:3480?transport=tcp",
+        username: "000000002069315588",
+        credential: "qZqyvpRA+tLuhdux2UlT2jWEaKg=",
+      },
+      {
+        urls: "turns:relay1.expressturn.com:443",
+        username: "000000002069315588",
+        credential: "qZqyvpRA+tLuhdux2UlT2jWEaKg=",
       },
       // TURN servers for relay when direct connection fails
       {
